@@ -1,10 +1,10 @@
 import tensorflow as tf
 
 
-def unet(flags_obj, n_filters=64):
+def unet(input_size, n_filters=64):
 
     # Contracting Path (encoding)
-    inputs = tf.keras.layers.Input(flags_obj.input_size)
+    inputs = tf.keras.layers.Input(input_size)
     conv1 = tf.keras.layers.Conv2D(n_filters,
                                    3,
                                    activation='relu',
