@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 from unet import unet
+import os
 
 import random
 
@@ -9,15 +10,16 @@ PANORAMA_WIDTH = 512
 PANORAMA_HEIGHT = 256
 
 
-def preprocess_data(img, mask):
+def preprocess_data(img, mask, train=False):
     img = img / 255.
     mask = mask / 255.
     mask[mask > 0.5] = 1
     mask[mask <= 0.5] = 0
 
-    if random.random() > 0.5:
-        img = tf.image.flip_left_right(img)
-        mask = tf.image.flip_left_right(mask)
+    if train == True:
+        roll = random.randint(1, PANORAMA_WIDTH - 1)
+        img = tf.roll(img, roll, axis=2)
+        mask = tf.roll(mask, roll, axis=2)
 
     return (img, mask)
 
@@ -55,7 +57,7 @@ def train_generator(path):
         save_prefix='label',
         seed=1337)
 
-    train_gene = (preprocess_data(img, mask)
+    train_gene = (preprocess_data(img, mask, train=True)
                   for img, mask in zip(image_generator, mask_generator))
 
     return train_gene
@@ -100,16 +102,23 @@ def test_generator(path):
     return test_gene
 
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False, name='Adam')
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.999, epsilon=1e-07, amsgrad=False, name='Adam')
 loss = tf.keras.losses.BinaryCrossentropy()
-metric = tf.keras.metrics.Accuracy()
+metric = tf.keras.metrics.BinaryAccuracy()
 
 train_gene = train_generator("/home/karlis/Desktop/dataset/train")
-samples = 1523 - 150
+samples = 4648
 test_gene = test_generator("/home/karlis/Desktop/dataset/test")
 
+# LOGS1 - no augment, no circular
+LOG_DIR = "logs_1_2"
+# Logs1_2 augment, no circular
 
-callbacks = [tf.keras.callbacks.TensorBoard(log_dir='logs_test', histogram_freq=0, write_graph=True, update_freq='epoch')]
+callbacks = [
+    tf.keras.callbacks.TensorBoard(log_dir=LOG_DIR, histogram_freq=0, write_graph=True, update_freq='epoch'),
+    tf.keras.callbacks.ModelCheckpoint(os.path.join(LOG_DIR, "best_loss.h5"), monitor='val_loss', save_best_only=True,
+                                       save_weights_only=False, mode='auto', save_freq='epoch')
+]
 
 
 model = unet((PANORAMA_HEIGHT, PANORAMA_WIDTH, 3))
@@ -124,7 +133,7 @@ history = model.fit_generator(
     epochs=100,
     steps_per_epoch=(samples // BATCH_SIZE),
     validation_data=test_gene,
-    validation_steps=(150 // BATCH_SIZE),
+    validation_steps=(500 // BATCH_SIZE),
     callbacks=[callbacks])
 
 # https://github.com/minoring/unet/blob/643b7b91aba7ec8d251b42ac79cfb07a1add0205/data.py#L16
